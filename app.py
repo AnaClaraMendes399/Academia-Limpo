@@ -150,7 +150,6 @@ def cadastro():
 
 # Rota de consulta - Método GET
 @app.route('/consulta', methods=['GET'])
-@token_obrigatorio
 def consulta():
     usuario_ref = db.collection("usuarios")
     usuarios = []
