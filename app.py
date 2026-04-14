@@ -168,7 +168,6 @@ def consulta():
 
 # Rota de consulta por CPF - Método GET
 @app.route('/consulta/<cpf>', methods=['GET'])
-@token_obrigatorio
 def consulta_por_cpf(cpf):
     usuario_doc = db.collection("usuarios").document(cpf).get()
     if not usuario_doc.exists:
