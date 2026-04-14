@@ -52,10 +52,43 @@ def buscar_usuario_cpf(cpf):
     query = usuarios_ref.where("cpf", "==", cpf).limit(1)
     resultados = list(query.stream())
     if resultados:
-        return resultados[0]  # retorna documentpo
+        return resultados[0]
     return None
 
+# Função para atualizar o contador
+def atualizar_contador():
+    """Atualiza o contador e retorna o novo ID"""
+    try:
+        contador_ref = db.collection("contador").document("controle_id")
+        contador = contador_ref.get()
+        
+        if not contador.exists:
+            # Criar contador se não existir
+            contador_ref.set({"ultimo_id": 1})
+            return 1
+        else:
+            ultimo_id = contador.to_dict().get("ultimo_id", 0)
+            novo_id = ultimo_id + 1
+            contador_ref.update({"ultimo_id": novo_id})
+            return novo_id
+    except Exception as e:
+        print(f"Erro ao atualizar contador: {e}")
+        return None
 
+# Função para obter o valor atual do contador
+def obter_contador():
+    """Retorna o valor atual do contador sem incrementar"""
+    try:
+        contador_ref = db.collection("contador").document("controle_id")
+        contador = contador_ref.get()
+        
+        if not contador.exists:
+            return 0
+        else:
+            return contador.to_dict().get("ultimo_id", 0)
+    except Exception as e:
+        print(f"Erro ao obter contador: {e}")
+        return 0
 
 # Rota principal 
 @app.route('/', methods=['GET'])
@@ -63,7 +96,13 @@ def buscar_usuario_cpf(cpf):
 def index():
     return jsonify({"mensagem": "Bem-vindo ao GreenFit!"})
 
-
+# Rota para obter o valor do contador
+@app.route('/contador', methods=['GET'])
+@token_obrigatorio
+def get_contador():
+    """Retorna o valor atual do contador"""
+    valor = obter_contador()
+    return jsonify({"ultimo_id": valor}), 200
 
 # Rota cadastro de usuário
 @app.route('/cadastro', methods=['POST'])
@@ -81,14 +120,20 @@ def cadastro():
     usuario_existente = buscar_usuario_cpf(cpf)
     if usuario_existente:
         return jsonify({"erro": "O CPF já está cadastrado."}), 400
-    # Adicionar documento com CPF como ID para facilitar buscas
+    
+    # Adicionar documento com CPF como ID
     db.collection("usuarios").document(cpf).set({
         "nome": nome,
         "cpf": cpf,
     })
-    return jsonify({"mensagem": "Usuário cadastrado com sucesso!"}), 201
-
-
+    
+    # Atualizar o contador
+    novo_id = atualizar_contador()
+    
+    return jsonify({
+        "mensagem": "Usuário cadastrado com sucesso!",
+        "id": novo_id
+    }), 201
 
 # Rota de consulta - Método GET
 @app.route('/consulta', methods=['GET'])
@@ -98,7 +143,16 @@ def consulta():
     usuarios = []
     for doc in usuario_ref.stream():
         usuarios.append(doc.to_dict())
-    return jsonify({"usuarios": usuarios})
+    
+    # Retornar também o total de usuários e o contador
+    total = len(usuarios)
+    contador = obter_contador()
+    
+    return jsonify({
+        "usuarios": usuarios,
+        "total": total,
+        "contador": contador
+    })
 
 # Rota de consulta por CPF - Método GET
 @app.route('/consulta/<cpf>', methods=['GET'])
@@ -109,8 +163,6 @@ def consulta_por_cpf(cpf):
         return jsonify({"erro": "Usuário não encontrado"}), 404
     return jsonify(usuario_doc.to_dict())
 
-
-
 # Rota de edição parcial - Método PATCH
 @app.route('/editar/<cpf>', methods=['PATCH'])
 @token_obrigatorio
@@ -118,20 +170,16 @@ def editar(cpf):
     dados = request.get_json()
     if not dados:
         return jsonify({"erro": "Envie os dados para edição"}), 400
-    # verificar se o cpf tem 11 dígitos
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
     doc_ref = db.collection("usuarios").document(cpf)
     doc = doc_ref.get()
     if not doc.exists:
         return jsonify({"erro": "Usuário não encontrado"}), 404
-    # Não permitir edição do CPF
     if "cpf" in dados:
         return jsonify({"erro": "Não é permitido alterar o CPF"}), 400
     doc_ref.update(dados)
     return jsonify({"mensagem": "Usuário editado com sucesso!"})
-
-
 
 # Rota de edição total - Método PUT
 @app.route('/substituir/<cpf>', methods=['PUT'])
@@ -143,7 +191,6 @@ def substituir(cpf):
     nome = dados.get("nome")
     if not nome:
         return jsonify({"erro": "O campo 'nome' é obrigatório."}), 400
-    # Verificar se o CPF tem 11 dígitos
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
     doc_ref = db.collection("usuarios").document(cpf)
@@ -156,12 +203,10 @@ def substituir(cpf):
     })
     return jsonify({"mensagem": "Usuário substituído com sucesso!"})
 
-
 # Rota de exclusão de alunos - Método DELETE
 @app.route("/excluir/<cpf>", methods=['DELETE'])
 @token_obrigatorio
 def excluir(cpf):
-    # Verificar se o CPF tem 11 dígitos
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
     doc_ref = db.collection("usuarios").document(cpf)
@@ -170,7 +215,6 @@ def excluir(cpf):
         return jsonify({"erro": "Usuário não encontrado"}), 404
     doc_ref.delete()
     return jsonify({"mensagem": "Usuário excluído com sucesso!"})
-
 
 # Rota de login 
 @app.route('/login', methods=['POST'])
@@ -181,14 +225,26 @@ def login():
     usuario = dados.get("usuario")
     senha = dados.get("senha")
     if usuario == ADM_USUARIO and senha == ADM_SENHA:
-        # Passe o usuário para o gerador de token
-        token = gerar_token(usuario)  # <- Agora passa o usuário
+        token = gerar_token(usuario)
         return jsonify({
             "token": token, 
             "mensagem": "Login realizado com sucesso!",
-            "usuario": usuario})
+            "usuario": usuario
+        })
     else:
         return jsonify({"erro": "Credenciais inválidas"}), 401
+
+# Rota para resetar o contador (opcional - apenas admin)
+@app.route('/resetar-contador', methods=['POST'])
+@token_obrigatorio
+def resetar_contador():
+    """Reseta o contador para 0 (uso administrativo)"""
+    try:
+        contador_ref = db.collection("contador").document("controle_id")
+        contador_ref.set({"ultimo_id": 0})
+        return jsonify({"mensagem": "Contador resetado com sucesso!"}), 200
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
 
 # ====================
 #  Rotas de tratamento de erros
