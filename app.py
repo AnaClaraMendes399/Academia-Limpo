@@ -148,19 +148,19 @@ def consulta():
     for doc in usuario_ref.stream():
         data = doc.to_dict()
         usuarios.append({
+            "id": data.get("id", "---"), # Garante que o ID vá para o Front-end
             "nome": data.get("nome"),
             "cpf": data.get("cpf"),
             "status": data.get("status", "Pendente")
         })
-    
+   
     total = len(usuarios)
     contador = obter_contador()
-    
-    # Contar por status
+   
     ativos = sum(1 for u in usuarios if u["status"] == "Ativo")
     inativos = sum(1 for u in usuarios if u["status"] == "Inativo")
     pendentes = sum(1 for u in usuarios if u["status"] == "Pendente")
-    
+   
     return jsonify({
         "usuarios": usuarios,
         "total": total,
