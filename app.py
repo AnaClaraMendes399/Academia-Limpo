@@ -14,7 +14,6 @@ app = Flask(__name__)
 app.config['SWAGGER'] = {
     'openapi': '3.0.3'
 }
-# Chamar o openapi para o código
 swagger = Swagger(app, template_file='openapi.yaml')
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
@@ -23,30 +22,26 @@ CORS(app, origins="*")
 ADM_USUARIO = os.getenv("ADM_USUARIO")
 ADM_SENHA = os.getenv("ADM_SENHA")
 
-# Import condicional do auth 
 try:
     from auth import token_obrigatorio, gerar_token
 except ImportError:
-    # Função dummy para desenvolvimento
     def token_obrigatorio(f):
         return f
     def gerar_token():
         return "token_dummy"
 
 if os.getenv("VERCEL"):
-    # Online na Vercel
     cred = credentials.Certificate(json.loads(os.getenv("FIREBASE_CREDENTIALS")))
 else:
-    # Local
     cred = credentials.Certificate("firebase_academia.json")
     
-# Carregar as credenciais do Firebase
 firebase_admin.initialize_app(cred)
-
-# Conectar ao Firestore
 db = firestore.client()
 
-# Função para buscar usuário por CPF
+# ====================
+# FUNÇÕES AUXILIARES
+# ====================
+
 def buscar_usuario_cpf(cpf):
     usuarios_ref = db.collection("usuarios")
     query = usuarios_ref.where("cpf", "==", cpf).limit(1)
@@ -55,7 +50,6 @@ def buscar_usuario_cpf(cpf):
         return resultados[0]
     return None
 
-# Função para atualizar o contador
 def atualizar_contador():
     try:
         contador_ref = db.collection("contador").document("controle_id")
@@ -66,46 +60,41 @@ def atualizar_contador():
             ultimo_id = dados.get("ultimo_id", 0)
             novo_id = ultimo_id + 1
             contador_ref.update({"ultimo_id": novo_id})
-            print(f"✅ Contador atualizado: {ultimo_id} -> {novo_id}")
             return novo_id
         else:
-            # Se não existir, cria com valor 1
             contador_ref.set({"ultimo_id": 1})
-            print(f"✅ Contador criado com valor 1")
             return 1
     except Exception as e:
-        print(f"❌ Erro ao atualizar contador: {e}")
+        print(f"Erro ao atualizar contador: {e}")
         return None
 
-# Função para obter o valor atual do contador
 def obter_contador():
     try:
         contador_ref = db.collection("contador").document("controle_id")
         contador = contador_ref.get()
-        
         if contador.exists:
-            dados = contador.to_dict()
-            return dados.get("ultimo_id", 0)
-        else:
-            return 0
+            return contador.to_dict().get("ultimo_id", 0)
+        return 0
     except Exception as e:
-        print(f"❌ Erro ao obter contador: {e}")
+        print(f"Erro ao obter contador: {e}")
         return 0
 
-# Rota principal 
+# ====================
+# ROTAS
+# ====================
+
 @app.route('/', methods=['GET'])
 @token_obrigatorio
 def index():
     return jsonify({"mensagem": "Bem-vindo ao GreenFit!"})
 
-# Rota para obter o valor do contador
 @app.route('/contador', methods=['GET'])
 @token_obrigatorio
 def get_contador():
     valor = obter_contador()
     return jsonify({"ultimo_id": valor}), 200
 
-# Rota cadastro de usuário
+# ROTA CADASTRO (com status padrão = "Pendente")
 @app.route('/cadastro', methods=['POST'])
 def cadastro():
     try:
@@ -115,6 +104,7 @@ def cadastro():
         
         nome = dados.get("nome")
         cpf = dados.get("cpf")
+        status = dados.get("status", "Pendente")  # Status padrão é "Pendente"
         
         if not all([nome, cpf]):
             return jsonify({"erro": "Os campos 'nome' e 'cpf' são obrigatórios."}), 400
@@ -122,56 +112,123 @@ def cadastro():
         if len(cpf) != 11 or not cpf.isdigit():
             return jsonify({"erro": "CPF inválido"}), 400
         
-        # Verificar se o CPF já existe
+        # Validar status (se foi enviado, deve ser válido)
+        if status not in ["Ativo", "Inativo", "Pendente"]:
+            return jsonify({"erro": "Status inválido. Use: Ativo, Inativo ou Pendente"}), 400
+        
         usuario_existente = buscar_usuario_cpf(cpf)
         if usuario_existente:
             return jsonify({"erro": "O CPF já está cadastrado."}), 400
         
-        # Adicionar documento com CPF como ID
+        # Adicionar documento com CPF como ID e status
         db.collection("usuarios").document(cpf).set({
             "nome": nome,
             "cpf": cpf,
+            "status": status,
+            "data_cadastro": firestore.SERVER_TIMESTAMP
         })
         
-        # Atualizar o contador
         novo_id = atualizar_contador()
         
         return jsonify({
             "mensagem": "Usuário cadastrado com sucesso!",
-            "id": novo_id
+            "id": novo_id,
+            "status": status
         }), 201
         
     except Exception as e:
-        print(f"❌ Erro no cadastro: {e}")
+        print(f"Erro no cadastro: {e}")
         return jsonify({"erro": str(e)}), 500
 
-# Rota de consulta - Método GET
+# ROTA CONSULTA GERAL (retorna status também)
 @app.route('/consulta', methods=['GET'])
 def consulta():
     usuario_ref = db.collection("usuarios")
     usuarios = []
     for doc in usuario_ref.stream():
-        usuarios.append(doc.to_dict())
+        data = doc.to_dict()
+        usuarios.append({
+            "nome": data.get("nome"),
+            "cpf": data.get("cpf"),
+            "status": data.get("status", "Pendente")
+        })
     
-    # Retornar também o total de usuários e o contador
     total = len(usuarios)
     contador = obter_contador()
+    
+    # Contar por status
+    ativos = sum(1 for u in usuarios if u["status"] == "Ativo")
+    inativos = sum(1 for u in usuarios if u["status"] == "Inativo")
+    pendentes = sum(1 for u in usuarios if u["status"] == "Pendente")
     
     return jsonify({
         "usuarios": usuarios,
         "total": total,
-        "contador": contador
+        "contador": contador,
+        "status_count": {
+            "Ativo": ativos,
+            "Inativo": inativos,
+            "Pendente": pendentes
+        }
     })
 
-# Rota de consulta por CPF - Método GET
+# ROTA CONSULTA POR CPF (para a catraca - só libera se estiver ATIVO!)
 @app.route('/consulta/<cpf>', methods=['GET'])
 def consulta_por_cpf(cpf):
     usuario_doc = db.collection("usuarios").document(cpf).get()
     if not usuario_doc.exists:
         return jsonify({"erro": "Usuário não encontrado"}), 404
-    return jsonify(usuario_doc.to_dict())
+    
+    dados = usuario_doc.to_dict()
+    status = dados.get("status", "Pendente")
+    
+    # Regra da catraca: só libera acesso se status for "Ativo"
+    if status != "Ativo":
+        return jsonify({
+            "erro": f"Acesso negado. Status do usuário: {status}",
+            "status": status,
+            "mensagem_status": "Apenas usuários ATIVOS podem acessar a academia."
+        }), 403
+    
+    return jsonify({
+        "nome": dados.get("nome"),
+        "cpf": dados.get("cpf"),
+        "status": status,
+        "acesso": "liberado"
+    }), 200
 
-# Rota de edição parcial - Método PATCH
+# ROTA PARA ALTERAR STATUS (PATCH)
+@app.route('/alterar-status/<cpf>', methods=['PATCH'])
+@token_obrigatorio
+def alterar_status(cpf):
+    dados = request.get_json()
+    if not dados:
+        return jsonify({"erro": "Envie o novo status"}), 400
+    
+    novo_status = dados.get("status")
+    if not novo_status:
+        return jsonify({"erro": "O campo 'status' é obrigatório."}), 400
+    
+    if novo_status not in ["Ativo", "Inativo", "Pendente"]:
+        return jsonify({"erro": "Status inválido. Use: Ativo, Inativo ou Pendente"}), 400
+    
+    if len(cpf) != 11 or not cpf.isdigit():
+        return jsonify({"erro": "CPF inválido"}), 400
+    
+    doc_ref = db.collection("usuarios").document(cpf)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"erro": "Usuário não encontrado"}), 404
+    
+    doc_ref.update({"status": novo_status})
+    
+    return jsonify({
+        "mensagem": f"Status do usuário alterado para {novo_status} com sucesso!",
+        "cpf": cpf,
+        "novo_status": novo_status
+    }), 200
+
+# ROTA EDIÇÃO PARCIAL (mantém status)
 @app.route('/editar/<cpf>', methods=['PATCH'])
 @token_obrigatorio
 def editar(cpf):
@@ -180,16 +237,22 @@ def editar(cpf):
         return jsonify({"erro": "Envie os dados para edição"}), 400
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
+    
     doc_ref = db.collection("usuarios").document(cpf)
     doc = doc_ref.get()
     if not doc.exists:
         return jsonify({"erro": "Usuário não encontrado"}), 404
+    
+    # Não permitir editar CPF ou status (status tem rota própria)
     if "cpf" in dados:
         return jsonify({"erro": "Não é permitido alterar o CPF"}), 400
+    if "status" in dados:
+        return jsonify({"erro": "Para alterar status, use a rota /alterar-status"}), 400
+    
     doc_ref.update(dados)
     return jsonify({"mensagem": "Usuário editado com sucesso!"})
 
-# Rota de edição total - Método PUT
+# ROTA SUBSTITUIR
 @app.route('/substituir/<cpf>', methods=['PUT'])
 @token_obrigatorio
 def substituir(cpf):
@@ -201,17 +264,25 @@ def substituir(cpf):
         return jsonify({"erro": "O campo 'nome' é obrigatório."}), 400
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
+    
     doc_ref = db.collection("usuarios").document(cpf)
     doc = doc_ref.get()
     if not doc.exists:
         return jsonify({"erro": "Usuário não encontrado"}), 404
+    
+    # Manter o status original se não for enviado
+    status_original = doc.to_dict().get("status", "Pendente")
+    novo_status = dados.get("status", status_original)
+    
     doc_ref.set({
         "nome": nome,
         "cpf": cpf,
+        "status": novo_status,
+        "data_atualizacao": firestore.SERVER_TIMESTAMP
     })
     return jsonify({"mensagem": "Usuário substituído com sucesso!"})
 
-# Rota de exclusão de alunos - Métethod DELETE
+# ROTA EXCLUIR
 @app.route("/excluir/<cpf>", methods=['DELETE'])
 @token_obrigatorio
 def excluir(cpf):
@@ -224,7 +295,7 @@ def excluir(cpf):
     doc_ref.delete()
     return jsonify({"mensagem": "Usuário excluído com sucesso!"})
 
-# Rota de login 
+# ROTA LOGIN
 @app.route('/login', methods=['POST'])
 def login():
     dados = request.get_json()
@@ -242,7 +313,6 @@ def login():
     else:
         return jsonify({"erro": "Credenciais inválidas"}), 401
 
-# Rota para resetar o contador (apenas admin)
 @app.route('/resetar-contador', methods=['POST'])
 @token_obrigatorio
 def resetar_contador():
@@ -253,9 +323,6 @@ def resetar_contador():
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
 
-# ====================
-#  Rotas de tratamento de erros
-# ====================
 @app.errorhandler(404)
 def erro404(error):
     return jsonify({"error": "URL não encontrada"}), 404
