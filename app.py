@@ -216,7 +216,6 @@ def get_contador():
     return jsonify({"ultimo_id": valor}), 200
 
 @app.route('/alterar-status/<cpf>', methods=['PATCH'])
-@token_obrigatorio
 def alterar_status(cpf):
     dados = request.get_json()
     if not dados:
@@ -256,7 +255,6 @@ def alterar_status(cpf):
     }), 200
 
 @app.route('/editar/<cpf>', methods=['PATCH'])
-@token_obrigatorio
 def editar(cpf):
     dados = request.get_json()
     if not dados:
@@ -278,7 +276,6 @@ def editar(cpf):
     return jsonify({"mensagem": "Usuário editado com sucesso!"})
 
 @app.route('/substituir/<cpf>', methods=['PUT'])
-@token_obrigatorio
 def substituir(cpf):
     dados = request.get_json()
     if not dados:
@@ -306,7 +303,6 @@ def substituir(cpf):
     return jsonify({"mensagem": "Usuário substituído com sucesso!"})
 
 @app.route("/excluir/<cpf>", methods=['DELETE'])
-@token_obrigatorio
 def excluir(cpf):
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
