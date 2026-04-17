@@ -147,6 +147,7 @@ def consulta():
     usuarios = []
     for doc in usuario_ref.stream():
         data = doc.to_dict()
+        data["id"] = doc.id
         usuarios.append({
             "id": data.get("id", "---"), # Garante que o ID vá para o Front-end
             "nome": data.get("nome"),
