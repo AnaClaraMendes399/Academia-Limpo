@@ -54,6 +54,10 @@ API para gerenciamento de acesso de alunos em academia com controle de catraca p
 | **Inativo** | Aluno com mensalidade atrasada | ❌ Negado |
 | **Pendente** | Cadastro aguardando ativação | ❌ Negado |
 
+## Autora: 
+Ana Clara Mendes - SENAI DS
+E-mail: ana.mendes.senai@gmail.com
+
 ## 🚀 Como Executar o Projeto
 
 ### 1. Clone o repositório
@@ -61,3 +65,4 @@ API para gerenciamento de acesso de alunos em academia com controle de catraca p
 ```bash
 git clone https://github.com/AnaClaraMendes399/Academia-Limpo.git
 cd Academia-Limpo
+
