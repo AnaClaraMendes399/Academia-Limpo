@@ -79,7 +79,6 @@ def atualizar_contador():
 
 # Função para obter o valor atual do contador
 def obter_contador():
-    """Retorna o valor atual do contador sem incrementar"""
     try:
         contador_ref = db.collection("contador").document("controle_id")
         contador = contador_ref.get()
@@ -103,7 +102,6 @@ def index():
 @app.route('/contador', methods=['GET'])
 @token_obrigatorio
 def get_contador():
-    """Retorna o valor atual do contador"""
     valor = obter_contador()
     return jsonify({"ultimo_id": valor}), 200
 
