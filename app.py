@@ -104,31 +104,26 @@ def cadastro():
         
         nome = dados.get("nome")
         cpf = dados.get("cpf")
-        status = dados.get("status", "Pendente")  # Status padrão é "Pendente"
-        
+        status = dados.get("status", "Pendente")
         if not all([nome, cpf]):
             return jsonify({"erro": "Os campos 'nome' e 'cpf' são obrigatórios."}), 400
-        
         if len(cpf) != 11 or not cpf.isdigit():
             return jsonify({"erro": "CPF inválido"}), 400
-        
-        # Validar status (se foi enviado, deve ser válido)
         if status not in ["Ativo", "Inativo", "Pendente"]:
             return jsonify({"erro": "Status inválido. Use: Ativo, Inativo ou Pendente"}), 400
-        
         usuario_existente = buscar_usuario_cpf(cpf)
         if usuario_existente:
             return jsonify({"erro": "O CPF já está cadastrado."}), 400
-        
-        # Adicionar documento com CPF como ID e status
+        # PRIMEIRO: atualizar o contador e pegar o novo ID
+        novo_id = atualizar_contador()
+        # SEGUNDO: salvar o usuário com o ID do contador
         db.collection("usuarios").document(cpf).set({
+            "id_contador": novo_id,  # ← SALVA O ID DO CONTADOR!
             "nome": nome,
             "cpf": cpf,
             "status": status,
             "data_cadastro": firestore.SERVER_TIMESTAMP
         })
-        
-        novo_id = atualizar_contador()
         
         return jsonify({
             "mensagem": "Usuário cadastrado com sucesso!",
@@ -139,26 +134,31 @@ def cadastro():
     except Exception as e:
         print(f"Erro no cadastro: {e}")
         return jsonify({"erro": str(e)}), 500
-
+    
 # ROTA CONSULTA GERAL (retorna status também)
 @app.route('/consulta', methods=['GET'])
 def consulta():
     usuario_ref = db.collection("usuarios")
     usuarios = []
-    docs = list(usuario_ref.stream())
-    for index, doc in enumerate(docs, start=1):
+    for doc in usuario_ref.stream():
         data = doc.to_dict()
         usuarios.append({
-            "id": index,  # ✅ ID numérico sequencial (1, 2, 3...)
+            "id": data.get("id_contador"),  # ← USA O ID DO CONTADOR!
             "nome": data.get("nome"),
             "cpf": data.get("cpf"),
             "status": data.get("status", "Pendente")
         })
+    
+    # Ordenar por id (opcional)
+    usuarios.sort(key=lambda x: x["id"] if x["id"] else 0)
+    
     total = len(usuarios)
     contador = obter_contador()
+    
     ativos = sum(1 for u in usuarios if u["status"] == "Ativo")
     inativos = sum(1 for u in usuarios if u["status"] == "Inativo")
     pendentes = sum(1 for u in usuarios if u["status"] == "Pendente")
+    
     return jsonify({
         "usuarios": usuarios,
         "total": total,
