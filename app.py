@@ -145,10 +145,11 @@ def cadastro():
 def consulta():
     usuario_ref = db.collection("usuarios")
     usuarios = []
-    for doc in usuario_ref.stream():
+    docs = list(usuario_ref.stream())
+    for index, doc in enumerate(docs, start=1):
         data = doc.to_dict()
         usuarios.append({
-            "id": doc.id,  # ✅ CORRETO! doc.id é o CPF
+            "id": index,  # ✅ ID numérico sequencial (1, 2, 3...)
             "nome": data.get("nome"),
             "cpf": data.get("cpf"),
             "status": data.get("status", "Pendente")
