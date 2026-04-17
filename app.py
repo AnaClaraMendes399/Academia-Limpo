@@ -135,7 +135,7 @@ def cadastro():
         print(f"Erro no cadastro: {e}")
         return jsonify({"erro": str(e)}), 500
     
-# ROTA CONSULTA GERAL (retorna status também)
+# ROTA CONSULTA GERAL (com ordenação por ID)
 @app.route('/consulta', methods=['GET'])
 def consulta():
     usuario_ref = db.collection("usuarios")
@@ -143,14 +143,14 @@ def consulta():
     for doc in usuario_ref.stream():
         data = doc.to_dict()
         usuarios.append({
-            "id": data.get("id_contador"),  # ← USA O ID DO CONTADOR!
+            "id": data.get("id_contador"),
             "nome": data.get("nome"),
             "cpf": data.get("cpf"),
             "status": data.get("status", "Pendente")
         })
     
-    # Ordenar por id (opcional)
-    usuarios.sort(key=lambda x: x["id"] if x["id"] else 0)
+    # Ordenar por ID (os menores IDs primeiro)
+    usuarios.sort(key=lambda x: x["id"] if x["id"] is not None else 999999)
     
     total = len(usuarios)
     contador = obter_contador()
@@ -195,35 +195,40 @@ def consulta_por_cpf(cpf):
         "acesso": "liberado"
     }), 200
 
-# ROTA PARA ALTERAR STATUS (PATCH)
+# ROTA PARA ALTERAR STATUS (mantém todos os campos)
 @app.route('/alterar-status/<cpf>', methods=['PATCH'])
 @token_obrigatorio
 def alterar_status(cpf):
     dados = request.get_json()
     if not dados:
         return jsonify({"erro": "Envie o novo status"}), 400
-    
     novo_status = dados.get("status")
     if not novo_status:
         return jsonify({"erro": "O campo 'status' é obrigatório."}), 400
-    
     if novo_status not in ["Ativo", "Inativo", "Pendente"]:
         return jsonify({"erro": "Status inválido. Use: Ativo, Inativo ou Pendente"}), 400
-    
     if len(cpf) != 11 or not cpf.isdigit():
         return jsonify({"erro": "CPF inválido"}), 400
-    
     doc_ref = db.collection("usuarios").document(cpf)
     doc = doc_ref.get()
     if not doc.exists:
         return jsonify({"erro": "Usuário não encontrado"}), 404
-    
-    doc_ref.update({"status": novo_status})
-    
+    # Atualizar apenas o status, mantendo os outros campos
+    doc_ref.update({
+        "status": novo_status,
+        "data_atualizacao": firestore.SERVER_TIMESTAMP
+    })
+    # Buscar o documento atualizado para retornar todos os dados
+    doc_atualizado = doc_ref.get()
+    dados_atualizados = doc_atualizado.to_dict()
     return jsonify({
         "mensagem": f"Status do usuário alterado para {novo_status} com sucesso!",
-        "cpf": cpf,
-        "novo_status": novo_status
+        "usuario": {
+            "id": dados_atualizados.get("id_contador"),
+            "nome": dados_atualizados.get("nome"),
+            "cpf": cpf,
+            "status": novo_status
+        }
     }), 200
 
 # ROTA EDIÇÃO PARCIAL (mantém status)
