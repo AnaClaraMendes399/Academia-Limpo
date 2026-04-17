@@ -57,7 +57,6 @@ def buscar_usuario_cpf(cpf):
 
 # Função para atualizar o contador
 def atualizar_contador():
-    """Atualiza o contador e retorna o novo ID"""
     try:
         contador_ref = db.collection("contador").document("controle_id")
         contador = contador_ref.get()
@@ -249,7 +248,6 @@ def login():
 @app.route('/resetar-contador', methods=['POST'])
 @token_obrigatorio
 def resetar_contador():
-    """Reseta o contador para 0 (uso administrativo)"""
     try:
         contador_ref = db.collection("contador").document("controle_id")
         contador_ref.set({"ultimo_id": 0})
