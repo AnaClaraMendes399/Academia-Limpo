@@ -56,7 +56,9 @@ API para gerenciamento de acesso de alunos em academia com controle de catraca p
 
 ## Autora: 
 Ana Clara Mendes - SENAI DS
+
 E-mail: ana.mendes.senai@gmail.com
+
 Link da vercel do Projeto: https://academia-limpo.vercel.app/
 
 ## 🚀 Como Executar o Projeto
