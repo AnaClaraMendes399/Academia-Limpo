@@ -61,6 +61,13 @@ E-mail: ana.mendes.senai@gmail.com
 
 Link da vercel do Projeto: https://academia-limpo.vercel.app/
 
+
+Autora: NicollyOliveiraS
+API FrontEnd Cliente: https://github.com/NicollyOliveiraS/academia
+API FrontEnd Admin: https://github.com/NicollyOliveiraS/adm_gym
+
+
+
 ## 🚀 Como Executar o Projeto
 
 ### 1. Clone o repositório
